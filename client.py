@@ -18,6 +18,7 @@ msg_mapping = {}
 loading_old_messages = False
 oldest_msg_id = float('inf')
 
+
 def validate_email(email):
     if not email:
         return True
@@ -31,7 +32,7 @@ def validate_phone(phone):
     return re.match(pattern, phone) is not None
 
 def generate_random_words(count):
-    """Генерирует случайные слова для mnemonic"""
+    """Generate random words for mnemonic"""
     words = [
         "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "abuse", "access",
         "accident", "account", "accuse", "achieve", "acid", "acoustic", "acquire", "across", "act", "action",
@@ -52,25 +53,22 @@ def generate_random_words(count):
     return " ".join(selected)
 
 def on_chat_scroll(event=None):
-    """Проверяет, прокручивает ли пользователь вверх в конец истории"""
+    """Check if user scrolls up to load old messages"""
     global loading_old_messages, oldest_msg_id
     
     if loading_old_messages:
         return
     
-    # Получаем позицию скролла
     try:
-        # Если пользователь прокрутил вверх близко к началу
         first_line = chat_box.index("@0,0")
         if first_line and first_line.startswith("1."):
-            # Близко к началу - загружаем старые сообщения
             if oldest_msg_id != float('inf'):
                 load_old_messages()
     except:
         pass
 
 def load_old_messages():
-    """Запрашивает старые сообщения с сервера"""
+    """Request old messages from server"""
     global loading_old_messages, oldest_msg_id, client_socket
     
     if loading_old_messages or oldest_msg_id == float('inf'):
@@ -79,13 +77,11 @@ def load_old_messages():
     loading_old_messages = True
     
     try:
-        # Показываем спиннер
         chat_box.config(state=tk.NORMAL)
-        chat_box.insert("1.0", "⏳ Загрузка старых сообщений...\n", "loading")
+        chat_box.insert("1.0", "⏳ Loading old messages...\n", "loading")
         chat_box.tag_config("loading", foreground="gray", font=("Arial", 10, "italic"))
         chat_box.config(state=tk.DISABLED)
         
-        # Запрашиваем старые сообщения
         packet = {
             "type": "load_old_messages",
             "before_id": oldest_msg_id,
@@ -132,12 +128,10 @@ def process_packet(packet):
         line_num = int(float(chat_box.index(tk.END))) - 2
         msg_mapping[line_num] = packet["id"]
         
-        # Обновляем oldest_msg_id
         if packet["id"] < oldest_msg_id:
             oldest_msg_id = packet["id"]
     
     elif packet["type"] == "old_messages":
-        # Удаляем спиннер загрузки
         try:
             chat_box.delete("1.0", "2.0")
         except:
@@ -146,7 +140,6 @@ def process_packet(packet):
         messages = packet.get("messages", [])
         
         if messages:
-            # Вставляем старые сообщения в начало чата
             insert_text = ""
             insert_mapping = {}
             
@@ -156,15 +149,12 @@ def process_packet(packet):
                     display_text = f"{msg['sender']} 📁 [FILE]: {msg['text']}\n"
                 
                 insert_text += display_text
-                # Рассчитываем номер строки
                 line_num = len(insert_text.split('\n')) - 2
                 insert_mapping[line_num] = msg["id"]
                 
-                # Обновляем oldest_msg_id
                 if msg["id"] < oldest_msg_id:
                     oldest_msg_id = msg["id"]
             
-            # Вставляем все сразу в начало
             if insert_text:
                 chat_box.insert("1.0", insert_text)
                 msg_mapping.update(insert_mapping)
@@ -281,25 +271,42 @@ def show_login_screen():
     register_frame.pack_forget()
     login_frame.pack(fill=tk.BOTH, expand=True)
 
-def generate_mnemonic_12():
-    words = generate_random_words(12)
-    mnemonic_text.configure(state=tk.NORMAL)
-    mnemonic_text.delete(0, tk.END)
-    mnemonic_text.insert(0, words)
-    mnemonic_text.configure(state=tk.DISABLED)
-
 def generate_mnemonic_24():
-    words = generate_random_words(24)
+    """Generate 24 words and display in 2 columns"""
+    words = generate_random_words(24).split()
+    
+    # Split into 2 columns
+    col1 = words[:12]
+    col2 = words[12:]
+    
+    # Create display text
+    display_text = ""
+    for i in range(12):
+        num1 = i + 1
+        num2 = i + 13
+        display_text += f"{num1:2d}. {col1[i]:12s}    {num2:2d}. {col2[i]:12s}\n"
+    
     mnemonic_text.configure(state=tk.NORMAL)
-    mnemonic_text.delete(0, tk.END)
-    mnemonic_text.insert(0, words)
+    mnemonic_text.delete("1.0", tk.END)
+    mnemonic_text.insert("1.0", display_text)
     mnemonic_text.configure(state=tk.DISABLED)
+    
+    # Store full mnemonic
+    window.full_mnemonic_24 = " ".join(words)
+
+def generate_mnemonic_12_login():
+    """Generate 12 words for login (single column)"""
+    words = generate_random_words(12)
+    mnemonic_text_login.configure(state=tk.NORMAL)
+    mnemonic_text_login.delete(0, tk.END)
+    mnemonic_text_login.insert(0, words)
+    mnemonic_text_login.configure(state=tk.DISABLED)
 
 def register_action():
     global username, user_mnemonic
     
     username = reg_user_entry.get().strip()
-    user_mnemonic = mnemonic_text.get().strip()
+    user_mnemonic = getattr(window, 'full_mnemonic_24', "").strip()
     email = reg_email_entry.get().strip()
     phone = reg_phone_entry.get().strip()
     
@@ -308,11 +315,11 @@ def register_action():
         return
     
     if not user_mnemonic:
-        messagebox.showerror("Error", "Generate mnemonic first!")
+        messagebox.showerror("Error", "Generate 24-word mnemonic first!")
         return
     
-    if len(user_mnemonic.split()) not in [12, 24]:
-        messagebox.showerror("Error", "Mnemonic must be 12 or 24 words!")
+    if len(user_mnemonic.split()) != 24:
+        messagebox.showerror("Error", "Mnemonic must be exactly 24 words!")
         return
     
     if email and not validate_email(email):
@@ -338,7 +345,7 @@ def login_action():
     global username, user_mnemonic
     
     username = user_entry.get().strip()
-    user_mnemonic = key_entry.get().strip()
+    user_mnemonic = mnemonic_text_login.get().strip()
     
     if not username or not user_mnemonic:
         messagebox.showerror("Error", "Username and mnemonic required!")
@@ -444,10 +451,13 @@ ctk.CTkLabel(login_frame, text="Username:", font=("Arial", 12, "bold")).pack(anc
 user_entry = ctk.CTkEntry(login_frame, placeholder_text="@username", width=250, height=35, corner_radius=8)
 user_entry.pack(pady=5)
 
-ctk.CTkLabel(login_frame, text="Mnemonic Phrase (12 or 24 words):", font=("Arial", 12, "bold")).pack(anchor=tk.W, padx=75, pady=(15, 0))
-key_entry = ctk.CTkEntry(login_frame, placeholder_text="Enter your mnemonic...", width=250, height=50, corner_radius=8)
-key_entry.pack(pady=5)
-key_entry.bind("<Return>", lambda event: login_action())
+ctk.CTkLabel(login_frame, text="Mnemonic Phrase (12 words):", font=("Arial", 12, "bold")).pack(anchor=tk.W, padx=75, pady=(15, 0))
+mnemonic_text_login = ctk.CTkEntry(login_frame, placeholder_text="Enter your 12-word mnemonic...", width=250, height=50, corner_radius=8)
+mnemonic_text_login.pack(pady=5)
+mnemonic_text_login.bind("<Return>", lambda event: login_action())
+
+gen_login_btn = ctk.CTkButton(login_frame, text="Generate 12 words", width=250, height=30, command=generate_mnemonic_12_login)
+gen_login_btn.pack(pady=5)
 
 login_button = ctk.CTkButton(login_frame, text="Sign In", width=250, height=40, corner_radius=8, fg_color="#0088cc", hover_color="#006699", font=("Arial", 13, "bold"), command=login_action)
 login_button.pack(pady=15)
@@ -459,21 +469,21 @@ register_btn.pack(pady=5)
 # REGISTER FRAME
 register_frame = ctk.CTkFrame(window, fg_color="transparent")
 
-ctk.CTkLabel(register_frame, text="Kareika", font=("Arial", 36, "bold")).pack(pady=25)
-ctk.CTkLabel(register_frame, text="Create Account", font=("Arial", 18, "bold")).pack(pady=(0, 15))
+ctk.CTkLabel(register_frame, text="Kareika", font=("Arial", 36, "bold")).pack(pady=10)
+ctk.CTkLabel(register_frame, text="Create Account", font=("Arial", 18, "bold")).pack(pady=(0, 10))
 
 ctk.CTkLabel(register_frame, text="Username:", font=("Arial", 11, "bold")).pack(anchor=tk.W, padx=50)
 reg_user_entry = ctk.CTkEntry(register_frame, placeholder_text="@username", width=300, height=35, corner_radius=8)
 reg_user_entry.pack(pady=5)
 
-ctk.CTkLabel(register_frame, text="Mnemonic Phrase:", font=("Arial", 11, "bold")).pack(anchor=tk.W, padx=50, pady=(10, 0))
-mnemonic_text = ctk.CTkEntry(register_frame, width=300, height=60, corner_radius=8, state=tk.DISABLED)
-mnemonic_text.pack(pady=5)
+ctk.CTkLabel(register_frame, text="Save your 24-word Recovery Phrase (take screenshot!):", font=("Arial", 11, "bold")).pack(anchor=tk.W, padx=50, pady=(10, 0))
+mnemonic_text = tk.Text(register_frame, width=50, height=15, font=("Courier", 14, "bold"), bg="#1E1E1E", fg="#00FF00", bd=2)
+mnemonic_text.pack(pady=5, padx=50)
+mnemonic_text.config(state=tk.DISABLED)
 
 gen_frame = ctk.CTkFrame(register_frame, fg_color="transparent")
 gen_frame.pack(pady=5)
-ctk.CTkButton(gen_frame, text="Generate 12 words", width=140, height=30, command=generate_mnemonic_12).pack(side=tk.LEFT, padx=5)
-ctk.CTkButton(gen_frame, text="Generate 24 words", width=140, height=30, command=generate_mnemonic_24).pack(side=tk.LEFT, padx=5)
+ctk.CTkButton(gen_frame, text="Generate 24-word Phrase", width=300, height=35, fg_color="#FF6B35", command=generate_mnemonic_24).pack()
 
 ctk.CTkLabel(register_frame, text="Email (optional):", font=("Arial", 11, "bold")).pack(anchor=tk.W, padx=50, pady=(10, 0))
 reg_email_entry = ctk.CTkEntry(register_frame, placeholder_text="your@email.com", width=300, height=35, corner_radius=8)
@@ -484,7 +494,7 @@ reg_phone_entry = ctk.CTkEntry(register_frame, placeholder_text="+1234567890", w
 reg_phone_entry.pack(pady=5)
 
 reg_btn = ctk.CTkButton(register_frame, text="Create Account", width=300, height=40, fg_color="#27AE60", hover_color="#229954", command=register_action)
-reg_btn.pack(pady=15)
+reg_btn.pack(pady=10)
 
 back_btn = ctk.CTkButton(register_frame, text="Back to Login", width=300, height=35, fg_color="#34495E", hover_color="#2C3E50", command=show_login_screen)
 back_btn.pack(pady=5)
